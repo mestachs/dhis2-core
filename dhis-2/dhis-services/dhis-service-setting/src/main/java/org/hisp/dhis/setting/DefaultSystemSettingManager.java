@@ -79,7 +79,7 @@ public class DefaultSystemSettingManager
     /**
      * Cache for system settings. Does not accept nulls. Disabled during test phase.
      */
-    private Cache<Serializable> settingCache;
+    private Map<String,Optional<Serializable>> settingCache;
     
   
     private static final Map<String, SettingKey> NAME_KEY_MAP = Lists.newArrayList(
@@ -115,8 +115,7 @@ public class DefaultSystemSettingManager
     @PostConstruct
     public void init()
     {
-        settingCache = cacheProvider.newCacheBuilder( Serializable.class ).forRegion( "systemSetting" )
-            .expireAfterWrite( 12, TimeUnit.HOURS ).withMaximumSize( SystemUtils.isTestRun() ? 0 : 400 ).build();
+        settingCache = new ConcurrentHashMap<String, Optional<Serializable>>();
  
     }
 
@@ -129,7 +128,7 @@ public class DefaultSystemSettingManager
     @Transactional
     public void saveSystemSetting( String name, Serializable value )
     {
-        settingCache.invalidate( name );
+        settingCache.remove( name );
 
         SystemSetting setting = systemSettingStore.getByName( name );
 
@@ -170,7 +169,7 @@ public class DefaultSystemSettingManager
 
         if ( setting != null )
         {
-            settingCache.invalidate( name );
+            settingCache.remove( name );
 
             systemSettingStore.delete( setting );
         }
@@ -204,10 +203,14 @@ public class DefaultSystemSettingManager
     @Override
     public Serializable getSystemSetting( SettingKey setting )
     {
-        Optional<Serializable> value = settingCache.get( setting.getName(),
-            key -> getSystemSettingOptional( key, setting.getDefaultValue() ).orElse( null ) );
 
-        return value.orElse( null );
+        Optional<Serializable> result = settingCache.get(setting.getName())
+        if (result == null) {
+            result = getSystemSettingOptional( key, setting.getDefaultValue() )
+            settingCache.put(setting.getName(),result)
+        }
+
+        return result.orElse( null );
     }
 
     /**
